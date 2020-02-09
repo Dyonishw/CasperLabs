@@ -23,6 +23,7 @@ import io.casperlabs.storage.StorageError
 import io.casperlabs.storage.block.BlockStorage
 import io.casperlabs.storage.deploy.{DeployStorage, DeployStorageReader}
 import cats.Applicative
+import cats.data.NonEmptyList
 import io.casperlabs.casper.MultiParentCasperImpl.Broadcaster
 import io.casperlabs.mempool.DeployBuffer
 import io.casperlabs.storage.dag.DagStorage
@@ -186,6 +187,30 @@ object BlockAPI {
                       )(_.pure[F])
                     )
       withDeploys <- withViews[F](blockInfo, maybeDeployView, blockView)
+    } yield withDeploys
+
+  def getMultipleBlockInfoWithDeploys[F[_]: MonadThrowable: MultiParentCasperRef: BlockStorage: DeployStorage: DagStorage](
+      blockHashList: Seq[BlockHash],
+      maybeDeployView: Option[DeployInfo.View],
+      blockView: BlockInfo.View
+  ): F[Seq[BlockAndMaybeDeploys]] =
+    for {
+      blockInfo <- BlockStorage[F]
+                    .getMultipleBlockInfo(NonEmptyList.fromListUnsafe(blockHashList.toList))
+      // TODO: add error handling
+//          .map(x =>
+//            x.map(y =>
+//            y.flatMap(
+//                      _.fold(
+//                        MonadThrowable[F]
+//                          .raiseError[BlockInfo](
+//                            NotFound.block(blockHash)
+//                          )
+//                      )(_.pure[F])
+//                    )))
+      withDeploys <- blockInfo.traverse { bl =>
+                      withViews[F](bl, maybeDeployView, blockView)
+                    }
     } yield withDeploys
 
   def getBlockInfoWithDeploysOpt[F[_]: Monad: BlockStorage: DeployStorage: DagStorage](

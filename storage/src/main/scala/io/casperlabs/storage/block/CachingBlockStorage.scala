@@ -1,6 +1,7 @@
 package io.casperlabs.storage.block
 
 import cats._
+import cats.data.NonEmptyList
 import cats.effect._
 import cats.implicits._
 import com.google.protobuf.ByteString
@@ -65,6 +66,9 @@ class CachingBlockStorage[F[_]: Sync](
   override def getBlockInfo(blockHash: BlockHash): F[Option[BlockInfo]] =
     // Not caching because in the future the finality status will get updated.
     underlying.getBlockInfo(blockHash)
+
+  override def getMultipleBlockInfo(blockHashList: NonEmptyList[BlockHash]): F[List[BlockInfo]] =
+    underlying.getMultipleBlockInfo(blockHashList)
 
   override def findBlockHashesWithDeployHashes(
       deployHashes: List[DeployHash]

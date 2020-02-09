@@ -165,6 +165,16 @@ class SQLiteBlockStorage[F[_]: Bracket[*[_], Throwable]: Fs2Compiler](
       .option
       .transact(readXa)
 
+  override def getMultipleBlockInfo(
+      blockHashList: NonEmptyList[BlockHash]
+  ): F[List[BlockInfo]] =
+    (fr"""SELECT """ ++ blockInfoCols() ++ fr"""
+              FROM block_metadata
+              WHERE """ ++ Fragments.in(fr"block_hash", blockHashList))
+      .query[BlockInfo]
+      .to[List]
+      .transact(readXa)
+
   override def findBlockHashesWithDeployHashes(
       deployHashes: List[DeployHash]
   ): F[Map[DeployHash, Set[BlockHash]]] =

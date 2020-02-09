@@ -1,5 +1,6 @@
 package io.casperlabs.storage
 
+import cats.data.NonEmptyList
 import io.casperlabs.storage.deploy.{
   DeployStorage,
   DeployStorageReader,
@@ -96,6 +97,10 @@ object SQLiteStorage {
 
       override def getBlockInfo(blockHash: BlockHash): F[Option[BlockInfo]] =
         blockStorage.getBlockInfo(blockHash)
+
+      override def getMultipleBlockInfo(
+          blockHashList: NonEmptyList[BlockHash]
+      ): F[List[BlockInfo]] = blockStorage.getMultipleBlockInfo(blockHashList)
 
       override def put(
           blockHash: BlockHash,

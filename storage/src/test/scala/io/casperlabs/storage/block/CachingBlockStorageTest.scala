@@ -1,5 +1,6 @@
 package io.casperlabs.storage.block
 
+import cats.data.NonEmptyList
 import cats.effect.concurrent._
 import cats.implicits._
 import com.google.protobuf.ByteString
@@ -8,11 +9,7 @@ import io.casperlabs.casper.consensus.BlockSummary
 import io.casperlabs.casper.consensus.info.BlockInfo
 import io.casperlabs.metrics.Metrics
 import io.casperlabs.storage.block.BlockStorage.{BlockHash, DeployHash}
-import io.casperlabs.storage.block.CachingBlockStorageTest.{
-  createSQLiteBlockStorage,
-  CachingBlockStorageTestData,
-  MockMetrics
-}
+import io.casperlabs.storage.block.CachingBlockStorageTest.{CachingBlockStorageTestData, MockMetrics, createSQLiteBlockStorage}
 import io.casperlabs.storage.dag.SQLiteDagStorage
 import io.casperlabs.storage.deploy.SQLiteDeployStorage
 import io.casperlabs.storage.{ArbitraryStorageData, BlockMsgWithTransform, SQLiteFixture}
@@ -233,6 +230,12 @@ object CachingBlockStorageTest {
 
       override def getBlockInfo(blockHash: BlockHash): Task[Option[BlockInfo]] =
         underlyingBlockStorage.getBlockInfo(blockHash)
+
+      override def getMultipleBlockInfo(
+          blockHashList: NonEmptyList[
+            BlockHash])
+        : Task[List[BlockInfo]] =
+        underlyingBlockStorage.getMultipleBlockInfo(blockHashList)
 
       override def getBlockSummary(blockHash: BlockHash): Task[Option[BlockSummary]] =
         underlyingBlockStorage.getBlockSummary(blockHash)

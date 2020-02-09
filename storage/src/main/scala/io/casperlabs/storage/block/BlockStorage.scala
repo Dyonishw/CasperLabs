@@ -1,6 +1,7 @@
 package io.casperlabs.storage.block
 
 import cats.Applicative
+import cats.data.NonEmptyList
 import cats.implicits._
 import com.google.protobuf.ByteString
 import io.casperlabs.casper.consensus.{Block, BlockSummary}
@@ -51,6 +52,8 @@ trait BlockStorage[F[_]] {
 
   def getBlockInfo(blockHash: BlockHash): F[Option[BlockInfo]]
 
+  def getMultipleBlockInfo(blockHashList: NonEmptyList[BlockHash]): F[List[BlockInfo]]
+
   def getBlockInfoByPrefix(blockHashPrefix: String): F[Option[BlockInfo]]
 
   /**
@@ -91,6 +94,11 @@ object BlockStorage {
 
     abstract override def getBlockInfo(blockHash: BlockHash): F[Option[BlockInfo]] =
       incAndMeasure("getBlockInfo", super.getBlockInfo(blockHash))
+
+    abstract override def getMultipleBlockInfo(
+        blockHashList: NonEmptyList[BlockHash]
+    ): F[List[BlockInfo]] =
+      incAndMeasure("getMultipleBlockInfo", super.getMultipleBlockInfo(blockHashList))
 
     abstract override def getBlockInfoByPrefix(
         blockHashPrefix: String
