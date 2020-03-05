@@ -10,6 +10,12 @@ import io.casperlabs.casper.consensus.info.BlockInfo
 import io.casperlabs.metrics.Metrics
 import io.casperlabs.storage.block.BlockStorage.{BlockHash, DeployHash}
 import io.casperlabs.storage.block.CachingBlockStorageTest.{CachingBlockStorageTestData, MockMetrics, createSQLiteBlockStorage}
+import io.casperlabs.storage.{BlockHash, DeployHash}
+import io.casperlabs.storage.block.CachingBlockStorageTest.{
+  createSQLiteBlockStorage,
+  CachingBlockStorageTestData,
+  MockMetrics
+}
 import io.casperlabs.storage.dag.SQLiteDagStorage
 import io.casperlabs.storage.deploy.SQLiteDeployStorage
 import io.casperlabs.storage.{ArbitraryStorageData, BlockMsgWithTransform, SQLiteFixture}
@@ -23,7 +29,6 @@ class CachingBlockStorageTest
     with Matchers
     with ArbitraryStorageData
     with SQLiteFixture[CachingBlockStorageTestData] {
-  import BlockStorage.BlockHash
 
   override def db: String = "/tmp/caching_block_storage_test.db"
 

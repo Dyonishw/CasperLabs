@@ -16,7 +16,7 @@ import io.casperlabs.metrics.Metrics
 import io.casperlabs.metrics.Metrics.Source
 import io.casperlabs.shared.Time
 import io.casperlabs.storage.DeployStorageMetricsSource
-import io.casperlabs.storage.block.BlockStorage.DeployHash
+import io.casperlabs.storage.DeployHash
 import io.casperlabs.storage.block.SQLiteBlockStorage.blockInfoCols
 import io.casperlabs.storage.util.DoobieCodecs
 
@@ -46,8 +46,6 @@ class SQLiteDeployStorage[F[_]: Time: Sync](
     ProcessedStatusCode -> DeployInfo.State.PROCESSED,
     DiscardedStatusCode -> DeployInfo.State.DISCARDED
   ).withDefaultValue(DeployInfo.State.UNDEFINED)
-
-  private val StatusMessageTtlExpired = "TTL expired"
 
   private val readers: TrieMap[DeployInfo.View, DeployStorageReader[F]] = TrieMap.empty
 
@@ -226,15 +224,32 @@ class SQLiteDeployStorage[F[_]: Time: Sync](
       } yield deletedNum
     }
 
-    override def markAsDiscarded(expirationPeriod: FiniteDuration): F[Unit] =
+    override def markAsDiscarded(
+        expirationPeriod: FiniteDuration,
+        message: String
+    ): F[Set[ByteString]] = {
+      def transaction(now: Long, threshold: Long) =
+        for {
+          hashes <- sql"""
+            SELECT hash
+            FROM buffered_deploys
+            WHERE status=$PendingStatusCode AND receive_time_millis<$threshold
+            """.query[ByteString].to[List]
+
+          _ <- Update[(Int, Long, String, ByteString)](s"""
+                UPDATE buffered_deploys
+                SET status=?, update_time_millis=?, status_message=?
+                WHERE hash=?""").updateMany(hashes.map { h =>
+                (DiscardedStatusCode, now, message, h)
+              })
+        } yield hashes
+
       for {
         now       <- Time[F].currentMillis
         threshold = now - expirationPeriod.toMillis
-        _ <- sql"""UPDATE buffered_deploys
-                   SET status=$DiscardedStatusCode, update_time_millis=$now, status_message=$StatusMessageTtlExpired
-                   WHERE status=$PendingStatusCode AND receive_time_millis<$threshold""".update.run
-              .transact(writeXa)
-      } yield ()
+        hashes    <- transaction(now, threshold).transact(writeXa)
+      } yield hashes.toSet
+    }
 
     private def countByStatus(status: Int): F[Long] =
       sql"SELECT COUNT(hash) FROM buffered_deploys WHERE status=$status"

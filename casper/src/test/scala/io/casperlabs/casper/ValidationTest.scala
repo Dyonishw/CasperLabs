@@ -13,6 +13,7 @@ import io.casperlabs.casper.helper.{
   BlockGenerator,
   DeployOps,
   HashSetCasperTestNode,
+  NoOpsEventEmitter,
   StorageFixture
 }
 import io.casperlabs.casper.helper.DeployOps.ChangeDeployOps
@@ -36,6 +37,8 @@ import io.casperlabs.crypto.Keys.PrivateKey
 import io.casperlabs.crypto.codec.Base16
 import io.casperlabs.crypto.signatures.SignatureAlgorithm.Ed25519
 import io.casperlabs.ipc.ChainSpec.DeployConfig
+import io.casperlabs.models.{ArbitraryConsensus, Message}
+import io.casperlabs.mempool.DeployBuffer
 import io.casperlabs.models.ArbitraryConsensus
 import io.casperlabs.models.BlockImplicits.BlockOps
 import io.casperlabs.p2p.EffectsTestInstances.LogicalTime
@@ -46,13 +49,13 @@ import io.casperlabs.storage.BlockMsgWithTransform
 import io.casperlabs.storage.block._
 import io.casperlabs.storage.dag._
 import io.casperlabs.storage.deploy.DeployStorage
+import io.casperlabs.casper.validation.NCBValidationImpl
 import monix.eval.Task
 import monix.execution.Scheduler
 import org.scalacheck.Arbitrary.arbitrary
 import org.scalatest.{BeforeAndAfterEach, EitherValues, FlatSpec, Matchers}
 import org.scalatest.prop.GeneratorDrivenPropertyChecks.forAll
 import logstage.LogIO
-
 import scala.collection.immutable.HashMap
 import scala.concurrent.duration._
 
@@ -64,6 +67,7 @@ class ValidationTest
     with BlockGenerator
     with StorageFixture
     with ArbitraryConsensus {
+  implicit val emitter                                = NoOpsEventEmitter.create[Task]
   implicit val timeEff                                = new LogicalTime[Task](System.currentTimeMillis)
   override implicit val log: LogIO[Task] with LogStub = LogStub[Task]()
   implicit val raiseValidateErr                       = validation.raiseValidateErrorThroughApplicativeError[Task]
@@ -71,12 +75,15 @@ class ValidationTest
     CasperLabsProtocol.unsafe[Task](
       (0L, state.ProtocolVersion(1), Some(DeployConfig(24 * 60 * 60 * 1000, 10)))
     )
-  import DeriveValidation._
+
+  implicit val validationEff = new NCBValidationImpl[Task]()
 
   // Necessary because errors are returned via Sync which has an error type fixed to _ <: Throwable.
   // When raise errors we wrap them with Throwable so we need to do the same here.
   implicit def wrapWithThrowable[A <: InvalidBlock](err: A): Throwable =
     ValidateErrorWrapper(err)
+
+  implicit def `Long => MainRank`(in: Long): Message.MainRank = Message.asMainRank(in)
 
   implicit val consensusConfig = ConsensusConfig()
 
@@ -159,7 +166,7 @@ class ValidationTest
   implicit class ChangeBlockOps(b: Block) {
     def changeBlockNumber(n: Long): Block = {
       val header    = b.getHeader
-      val newHeader = header.withRank(n)
+      val newHeader = header.withJRank(n)
       // NOTE: blockHash should be recalculated.
       b.withHeader(newHeader)
     }
@@ -251,11 +258,14 @@ class ValidationTest
       ByteString.EMPTY,
       "casperlabs",
       1,
-      0,
+      Message.asJRank(1),
+      Message.asMainRank(1),
       pk,
       sk,
       Ed25519,
-      ByteString.EMPTY
+      ByteString.EMPTY,
+      0,
+      false
     )
     Validation.blockSignature[Task](block) shouldBeF true
   }
@@ -723,7 +733,8 @@ class ValidationTest
         b8 <- createValidatorBlock[Task](Seq(b1, b2, b3), bonds, Seq(b1, b2, b3), v2, b0) //parents wrong order
         b9 <- createValidatorBlock[Task](Seq(b6), bonds, Seq.empty, v0, b0)
                .map(b => b.withHeader(b.getHeader.withJustifications(Seq.empty))) //empty justification
-        b10 <- createValidatorBlock[Task](Seq.empty, bonds, Seq.empty, v0, b0) //empty justification
+        // Set obviously incorrect parent. Later we want to test that validation raises `InvalidParent` error.
+        b10 <- createValidatorBlock[Task](Seq(b0), bonds, Seq(b9), v0, b0)
         result <- for {
                    dag <- dagStorage.getRepresentation
                    // Valid
@@ -1290,6 +1301,9 @@ class ValidationTest
       implicit val deploySelection: DeploySelection[Task] = DeploySelection.create[Task](
         5 * 1024 * 1024
       )
+
+      implicit val deployBuffer = DeployBuffer.create[Task]("casperlabs", Duration.Zero)
+
       for {
         _ <- deployStorage.writer.addAsPending(deploys.toList)
         deploysCheckpoint <- ExecEngineUtil.computeDeploysCheckpoint[Task](
@@ -1297,7 +1311,7 @@ class ValidationTest
                               fs2.Stream.fromIterator[Task](deploys.toIterator),
                               System.currentTimeMillis,
                               ProtocolVersion(1),
-                              rank = 0,
+                              mainRank = 0,
                               upgrades = Nil
                             )
         DeploysCheckpoint(
@@ -1305,6 +1319,7 @@ class ValidationTest
           computedPostStateHash,
           bondedValidators,
           processedDeploys,
+          _,
           _
         ) = deploysCheckpoint
         block <- createAndStoreMessage[Task](

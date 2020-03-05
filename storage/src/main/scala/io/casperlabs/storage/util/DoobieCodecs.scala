@@ -3,7 +3,7 @@ package io.casperlabs.storage.util
 import com.google.protobuf.ByteString
 import doobie._
 import io.casperlabs.casper.consensus.Block.ProcessedDeploy
-import io.casperlabs.casper.consensus.{BlockSummary, Deploy}
+import io.casperlabs.casper.consensus.{BlockSummary, Deploy, Era}
 import io.casperlabs.crypto.Keys.{PublicKey, PublicKeyBS}
 import io.casperlabs.casper.consensus.info.BlockInfo
 import io.casperlabs.casper.consensus.info.DeployInfo.ProcessingResult
@@ -57,8 +57,15 @@ trait DoobieCodecs {
   }
 
   protected implicit val readBlockInfo: Read[BlockInfo] = {
-    Read[(Array[Byte], Int, Int, Long, Long)].map {
-      case (blockSummaryData, blockSize, deployErrorCount, deployCostTotal, deployGasPriceAvg) =>
+    Read[(Array[Byte], Int, Int, Long, Long, Boolean)].map {
+      case (
+          blockSummaryData,
+          blockSize,
+          deployErrorCount,
+          deployCostTotal,
+          deployGasPriceAvg,
+          isFinalized
+          ) =>
         val blockSummary = BlockSummary.parseFrom(blockSummaryData)
         val blockStatus = BlockInfo
           .Status()
@@ -70,6 +77,7 @@ trait DoobieCodecs {
               .withDeployCostTotal(deployCostTotal)
               .withDeployGasPriceAvg(deployGasPriceAvg)
           )
+          .withIsFinalized(isFinalized)
         BlockInfo()
           .withSummary(blockSummary)
           .withStatus(blockStatus)
@@ -92,4 +100,7 @@ trait DoobieCodecs {
 
   protected implicit val metaTransformEntry: Meta[TransformEntry] =
     Meta[Array[Byte]].imap(TransformEntry.parseFrom)(_.toByteString.toByteArray)
+
+  protected implicit val metaEra: Meta[Era] =
+    Meta[Array[Byte]].imap(Era.parseFrom)(_.toByteString.toByteArray)
 }

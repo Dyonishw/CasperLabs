@@ -17,7 +17,8 @@ import io.casperlabs.crypto.codec.Base16
 import io.casperlabs.ipc.TransformEntry
 import io.casperlabs.metrics.Metrics
 import io.casperlabs.metrics.Metrics.Source
-import io.casperlabs.storage.block.BlockStorage.{BlockHash, DeployHash, MeteredBlockStorage}
+import io.casperlabs.storage.{BlockHash, DeployHash}
+import io.casperlabs.storage.block.BlockStorage.MeteredBlockStorage
 import io.casperlabs.storage.util.DoobieCodecs
 import io.casperlabs.storage.{BlockMsgWithTransform, BlockStorageMetricsSource}
 
@@ -228,7 +229,14 @@ object SQLiteBlockStorage {
   // Helper function to avoid having to duplicate the list of columns of `BlockInfo` to read it from the `block_metadata` table.
   private[storage] def blockInfoCols(alias: String = "") = {
     val cols =
-      Seq("data", "block_size", "deploy_error_count", "deploy_cost_total", "deploy_gas_price_avg")
+      Seq(
+        "data",
+        "block_size",
+        "deploy_error_count",
+        "deploy_cost_total",
+        "deploy_gas_price_avg",
+        "is_finalized"
+      )
     Fragment.const(cols.map(col => if (alias.isEmpty) col else s"${alias}.${col}").mkString(", "))
   }
 }

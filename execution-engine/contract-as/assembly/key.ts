@@ -5,7 +5,7 @@ import {URef} from "./uref";
 import {CLValue} from "./clvalue";
 import {Error} from "./error";
 import {checkTypedArrayEqual, typedToArray} from "./utils";
-import {GetDecodedBytesCount, AddDecodedBytesCount, SetDecodedBytesCount} from "./bytesrepr";
+import {Result, Ref, Error as BytesreprError} from "./bytesrepr";
 
 export enum KeyVariant {
     ACCOUNT_ID = 0,
@@ -13,11 +13,42 @@ export enum KeyVariant {
     UREF_ID = 2,
 }
 
+export const PUBLIC_KEY_ED25519_ID: u8 = 0;
+
+export class PublicKey {
+    constructor(public variant: u8, public bytes: Uint8Array) {}
+
+    @operator("==")
+    equalsTo(other: PublicKey): bool {
+        return this.variant == other.variant && checkTypedArrayEqual(this.bytes, other.bytes);
+    }
+
+    @operator("!=")
+    notEqualsTo(other: PublicKey): bool {
+        return !this.equalsTo(other);
+    }
+
+    static fromBytes(bytes: Uint8Array): Result<PublicKey> {
+        if (bytes.length < 32) {
+            return new Result<PublicKey>(null, BytesreprError.EarlyEndOfStream, 0);
+        }
+
+        let publicKeyBytes = bytes.subarray(0, 32);
+        let publicKey = new PublicKey(PUBLIC_KEY_ED25519_ID, publicKeyBytes);
+        let ref = new Ref<PublicKey>(publicKey);
+        return new Result<PublicKey>(ref, BytesreprError.Ok, 32);
+    }
+
+    toBytes(): Array<u8> {
+        return typedToArray(this.bytes);
+    }
+}
+
 export class Key {
     variant: KeyVariant;
     hash: Uint8Array | null;
     uref: URef | null;
-    account: Uint8Array | null;
+    account: PublicKey | null;
 
     static fromURef(uref: URef): Key {
         let key = new Key();
@@ -33,7 +64,7 @@ export class Key {
         return key;
     }
 
-    static fromAccount(account: Uint8Array): Key {
+    static fromAccount(account: PublicKey): Key {
         let key = new Key();
         key.variant = KeyVariant.ACCOUNT_ID;
         key.account = account;
@@ -41,7 +72,6 @@ export class Key {
     }
 
     /// attempts to write `value` under a new Key::URef
-    /// this is equivalent to the TURef concept in the rust implementation
     /// if a key is returned it is always of KeyVariant.UREF_ID
     static create(value: CLValue): Key | null {
         const valueBytes = value.toBytes();
@@ -51,50 +81,55 @@ export class Key {
             valueBytes.dataStart,
             valueBytes.length
         );
-        const key = Key.fromBytes(keyBytes);
-        if (key === null) {
+        const keyResult = Key.fromBytes(keyBytes);
+        if (keyResult.hasError()) {
             return null;
         }
+        let key = keyResult.value;
         if (key.variant != KeyVariant.UREF_ID) {
             return null;
         }
-        return <Key>key;
+        return key;
     }
 
-    static fromBytes(bytes: Uint8Array): Key | null {
+    static fromBytes(bytes: Uint8Array): Result<Key> {
         if (bytes.length < 1) {
-            return null;
+            return new Result<Key>(null, BytesreprError.EarlyEndOfStream, 0);
         }
         const tag = bytes[0];
-        SetDecodedBytesCount(1);
+        let currentPos = 1;
+
         if (tag == KeyVariant.HASH_ID) {
             var hashBytes = bytes.subarray(1, 32 + 1);
-            AddDecodedBytesCount(32);
-            return Key.fromHash(hashBytes);
+            currentPos += 32;
+            
+            let key = Key.fromHash(hashBytes);
+            let ref = new Ref<Key>(key);
+            return new Result<Key>(ref, BytesreprError.Ok, currentPos);
         }
         else if (tag == KeyVariant.UREF_ID) {
             var urefBytes = bytes.subarray(1);
-
-            let savedOffset = GetDecodedBytesCount();
-
-            var uref = URef.fromBytes(urefBytes);
-            if (uref === null) {
-                return null;
+            var urefResult = URef.fromBytes(urefBytes);
+            if (urefResult.error != BytesreprError.Ok) {
+                return new Result<Key>(null, urefResult.error, 0);
             }
-
-            let decodedBytes = GetDecodedBytesCount();
-            SetDecodedBytesCount(savedOffset);
-            AddDecodedBytesCount(decodedBytes);
-
-            return Key.fromURef(<URef>uref);
+            let key = Key.fromURef(urefResult.value);
+            let ref = new Ref<Key>(key);
+            return new Result<Key>(ref, BytesreprError.Ok, currentPos + urefResult.position);
         }
         else if (tag == KeyVariant.ACCOUNT_ID) {
-            var accountBytes = bytes.subarray(1, 32 + 1);
-            AddDecodedBytesCount(32);
-            return Key.fromAccount(accountBytes);
+            let publicKeyBytes = bytes.subarray(1);
+            let publicKeyResult = PublicKey.fromBytes(publicKeyBytes);
+            if (publicKeyResult.hasError()) {
+                return new Result<Key>(null, publicKeyResult.error, currentPos);
+            }
+            currentPos += publicKeyResult.position;
+            let key = Key.fromAccount(publicKeyResult.value);
+            let ref = new Ref<Key>(key);
+            return new Result<Key>(ref, BytesreprError.Ok, currentPos);
         }
         else {
-            return null;
+            return new Result<Key>(null, BytesreprError.FormattingError, currentPos);
         }
     }
 
@@ -115,10 +150,9 @@ export class Key {
             return bytes;
         }
         else if (this.variant == KeyVariant.ACCOUNT_ID) {
-            var accountBytes = <Uint8Array>this.account;
-            let bytes = new Array<u8>(1);
-            bytes[0] = <u8>this.variant;
-            bytes = bytes.concat(typedToArray(accountBytes));
+            let bytes = new Array<u8>();
+            bytes.push(<u8>this.variant);
+            bytes = bytes.concat((<PublicKey>this.account).toBytes());
             return bytes;
         }
         else {
@@ -192,7 +226,7 @@ export class Key {
         }
         else if (this.variant == KeyVariant.ACCOUNT_ID) {
             if (other.variant == KeyVariant.ACCOUNT_ID) {
-                return checkTypedArrayEqual(<Uint8Array>this.account, <Uint8Array>other.account);
+                return <PublicKey>this.account == <PublicKey>other.account;
             }
             else {
                 return false;
