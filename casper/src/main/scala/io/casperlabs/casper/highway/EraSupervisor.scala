@@ -135,16 +135,10 @@ class EraSupervisor[F[_]: Concurrent: Timer: Log: Metrics: EraStorage: Relaying:
     } yield entry
   }
 
-  private def isStartRound(action: Agenda.Action) = action match {
-    case _: Agenda.StartRound => true
-    case _                    => false
-  }
-
   private def schedule(runtime: EraRuntime[F], agenda: Agenda): F[Unit] =
     agenda.traverse {
       case delayed @ Agenda.DelayedAction(tick, action) =>
-        val key     = (runtime.era.keyBlockHash, delayed)
-        val isStart = isStartRound(action)
+        val key = (runtime.era.keyBlockHash, delayed)
         for {
           fiber <- scheduleAt(tick) {
                     val era = runtime.era.keyBlockHash.show
@@ -159,12 +153,6 @@ class EraSupervisor[F[_]: Concurrent: Timer: Log: Metrics: EraStorage: Relaying:
                                           val rem = sch - key
                                           rem -> rem.isEmpty
                                         }
-
-                      hasNextStart = agenda.map(_.action).find(isStartRound(_)).nonEmpty
-
-                      _ <- Log[F]
-                            .info(s"There are no more rounds scheduled for $era")
-                            .whenA(isStart && !hasNextStart)
                       _ <- Log[F]
                             .warn(s"There are no more actions scheduled for any of the active eras")
                             .whenA(isScheduleEmpty && agenda.isEmpty)
@@ -175,7 +163,8 @@ class EraSupervisor[F[_]: Concurrent: Timer: Log: Metrics: EraStorage: Relaying:
 
                     exec.recoverWith {
                       case NonFatal(ex) =>
-                        Log[F].error(s"Error executing $action in $era: $ex")
+                        Metrics[F].incrementCounter("schedule_errors") *>
+                          Log[F].error(s"Error executing $action in $era: $ex")
                     }
                   }
           _ <- scheduleRef.update { s =>
@@ -191,10 +180,11 @@ class EraSupervisor[F[_]: Concurrent: Timer: Log: Metrics: EraStorage: Relaying:
     for {
       now   <- Timer[F].clock.realTime(conf.tickUnit)
       delay = math.max(ticks - now, 0L)
+      delayedF = Timer[F].sleep(FiniteDuration(delay, conf.tickUnit)) >> effect.onError {
+        case NonFatal(ex) => Log[F].error(s"Error executing fiber: $ex")
+      }
       fiber <- Concurrent[F].start {
-                Timer[F].sleep(FiniteDuration(delay, conf.tickUnit)) >> effect.onError {
-                  case NonFatal(ex) => Log[F].error(s"Error executing fiber: $ex")
-                }
+                Metrics[F].gauge("scheduled_items")(delayedF)
               }
     } yield fiber
 
@@ -207,12 +197,13 @@ class EraSupervisor[F[_]: Concurrent: Timer: Log: Metrics: EraStorage: Relaying:
             )
         _ <- messageExecutor
               .effectsAfterAdded(Validated(message))
-              .timerGauge("created_effectsAfterAdded")
+              .timerGauge(s"created_${kind}_effectsAfterAdded")
         _ <- Relaying[F]
               .relay(List(message.messageHash))
-              .timerGauge("created_relay")
+              .timerGauge(s"created_${kind}_relay")
         _ <- propagateLatestMessageToDescendantEras(message)
-              .timerGauge("created_propagateLatestMessage")
+              .timerGauge(s"created_${kind}_propagateLatestMessage")
+        _ <- Metrics[F].incrementCounter(s"created_$kind")
       } yield ()
 
     events.traverse {

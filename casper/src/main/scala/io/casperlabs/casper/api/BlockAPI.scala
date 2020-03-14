@@ -22,8 +22,8 @@ import io.casperlabs.mempool.DeployBuffer
 import io.casperlabs.metrics.Metrics
 import io.casperlabs.shared.{FatalError, Log}
 import io.casperlabs.smartcontracts.ExecutionEngineService
-import io.casperlabs.smartcontracts.cltype
-import io.casperlabs.smartcontracts.cltype.{ByteArray32, CLValueInstance}
+import io.casperlabs.models.cltype
+import io.casperlabs.models.cltype.{ByteArray32, CLValueInstance}
 import io.casperlabs.storage.StorageError
 import io.casperlabs.storage.block.BlockStorage
 import io.casperlabs.storage.deploy.{DeployStorage, DeployStorageReader}
@@ -326,7 +326,7 @@ object BlockAPI {
       error           = (s: String) => new IllegalStateException(s)
       getState = (k: cltype.Key) =>
         ExecutionEngineService[F]
-          .query(stateHash, cltype.ProtoMappings.toProto(k), Nil, protocolVersion)
+          .query(stateHash, cltype.protobuf.Mappings.toProto(k), Nil, protocolVersion)
           .rethrow
       accountKey <- MonadThrowable[F].fromOption(
                      ByteArray32(accountKey.toByteArray),
@@ -368,29 +368,30 @@ object BlockAPI {
                         MonadThrowable[F]
                           .raiseError[ByteArray32](error(s"Expected cltype.CLValue, got $x"))
                     }
-      balance <- getState(cltype.Key.URef(cltype.URef(balanceUref, None))).flatMap {
-                  case cltype.StoredValue.CLValue(clValue) =>
-                    cltype.CLValueInstance
-                      .from(clValue)
-                      .fold(
-                        e =>
-                          MonadThrowable[F]
-                            .raiseError[BigInt Refined NonNegative](error(e.toString)), {
-                          case CLValueInstance.U512(bigInt) =>
-                            bigInt.pure[F]
-                          case x =>
+      balance <- getState(cltype.Key.URef(cltype.URef(balanceUref, cltype.AccessRights.None)))
+                  .flatMap {
+                    case cltype.StoredValue.CLValue(clValue) =>
+                      cltype.CLValueInstance
+                        .from(clValue)
+                        .fold(
+                          e =>
                             MonadThrowable[F]
-                              .raiseError[BigInt Refined NonNegative](
-                                error(s"Expected cltype.U512, got $x")
-                              )
-                        }
-                      )
-                  case x =>
-                    MonadThrowable[F]
-                      .raiseError[BigInt Refined NonNegative](
-                        error(s"Expected cltype.CLValue, got $x")
-                      )
-                }
+                              .raiseError[BigInt Refined NonNegative](error(e.toString)), {
+                            case CLValueInstance.U512(bigInt) =>
+                              bigInt.pure[F]
+                            case x =>
+                              MonadThrowable[F]
+                                .raiseError[BigInt Refined NonNegative](
+                                  error(s"Expected cltype.U512, got $x")
+                                )
+                          }
+                        )
+                    case x =>
+                      MonadThrowable[F]
+                        .raiseError[BigInt Refined NonNegative](
+                          error(s"Expected cltype.CLValue, got $x")
+                        )
+                  }
     } yield balance.value
     program.adaptErr {
       case _ => NotFound.balance(accountKey)

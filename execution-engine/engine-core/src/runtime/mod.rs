@@ -2,6 +2,7 @@ mod args;
 mod externals;
 mod mint_internal;
 mod proof_of_stake_internal;
+mod standard_payment_internal;
 
 use std::{
     cmp,
@@ -15,10 +16,11 @@ use parity_wasm::elements::Module;
 use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef, Trap, TrapKind};
 
 use ::mint::Mint;
-use ::proof_of_stake::ProofOfStake;
 use contract::args_parser::ArgsParser;
 use engine_shared::{account::Account, contract::Contract, gas::Gas, stored_value::StoredValue};
 use engine_storage::{global_state::StateReader, protocol_data::ProtocolData};
+use proof_of_stake::ProofOfStake;
+use standard_payment::StandardPayment;
 use types::{
     account::{ActionType, PublicKey, Weight},
     bytesrepr::{self, FromBytes, ToBytes},
@@ -82,7 +84,7 @@ pub fn instance_and_memory(
 /// Returns None if `key` is not `Key::URef` as it wouldn't have `AccessRights`
 /// associated with it. Helper function for creating `named_keys` associating
 /// addresses and corresponding `AccessRights`.
-pub fn key_to_tuple(key: Key) -> Option<([u8; 32], Option<AccessRights>)> {
+pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
     match key {
         Key::URef(uref) => Some((uref.addr(), uref.access_rights())),
         Key::Account(_) => None,
@@ -104,9 +106,7 @@ pub fn extract_access_rights_from_urefs<I: IntoIterator<Item = URef>>(
         .map(|(key, group)| {
             (
                 key,
-                group
-                    .filter_map(|(_, x)| x)
-                    .collect::<HashSet<AccessRights>>(),
+                group.map(|(_, x)| x).collect::<HashSet<AccessRights>>(),
             )
         })
         .collect()
@@ -126,9 +126,7 @@ pub fn extract_access_rights_from_keys<I: IntoIterator<Item = Key>>(
         .map(|(key, group)| {
             (
                 key,
-                group
-                    .filter_map(|(_, x)| x)
-                    .collect::<HashSet<AccessRights>>(),
+                group.map(|(_, x)| x).collect::<HashSet<AccessRights>>(),
             )
         })
         .collect()
@@ -1886,6 +1884,15 @@ where
         Ok(ret)
     }
 
+    pub fn call_host_standard_payment(&mut self) -> Result<(), Error> {
+        let first_arg = match self.context.args().first() {
+            Some(cl_value) => cl_value.clone(),
+            None => return Err(Error::InvalidContext),
+        };
+        let amount = first_arg.into_t()?;
+        self.pay(amount).map_err(Self::reverter)
+    }
+
     /// Calls contract living under a `key`, with supplied `args`.
     pub fn call_contract(&mut self, key: Key, args_bytes: Vec<u8>) -> Result<CLValue, Error> {
         let contract = match self.context.read_gs(&key)? {
@@ -1924,7 +1931,7 @@ where
             self.context.validate_key(key)?;
         }
 
-        if self.config.turbo() {
+        if !self.config.use_system_contracts() {
             if self.is_mint(key) {
                 return self.call_host_mint(
                     self.context.protocol_version(),

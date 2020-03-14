@@ -55,8 +55,8 @@ use crate::internal::utils;
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
 ///
-/// This default value should give 1MiB initial map size by default.
-const DEFAULT_LMDB_PAGES: usize = 2560;
+/// This default value should give 50MiB initial map size by default.
+const DEFAULT_LMDB_PAGES: usize = 128_000;
 
 /// This is appended to the data dir path provided to the `LmdbWasmTestBuilder` in order to match
 /// the behavior of `get_data_dir()` in "engine-grpc-server/src/main.rs".
@@ -100,11 +100,9 @@ impl<S> WasmTestBuilder<S> {
 impl Default for InMemoryWasmTestBuilder {
     fn default() -> Self {
         Self::initialize_logging();
-        let engine_config = if cfg!(feature = "turbo") {
-            EngineConfig::new().with_turbo(true)
-        } else {
-            EngineConfig::new()
-        };
+        let engine_config = EngineConfig::new()
+            .with_use_system_contracts(cfg!(feature = "use-system-contracts"))
+            .with_highway(cfg!(feature = "highway"));
 
         let global_state = InMemoryGlobalState::empty().expect("should create global state");
         let engine_state = EngineState::new(global_state, engine_config);
