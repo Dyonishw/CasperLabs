@@ -216,7 +216,12 @@ class EraRuntime[F[_]: Sync: Clock: Metrics: Log: EraStorage: FinalityStorageRea
     */
   private def ifCanBuildOn[T](choice: ForkChoice.Result)(build: => F[T]): F[Option[T]] =
     // Doesn't apply on Genesis.
-    if (!choice.block.parentBlock.isEmpty && choice.block.roundId < startTick) none.pure[F]
+    if (!choice.block.parentBlock.isEmpty && choice.block.roundId < startTick)
+      Log[F]
+        .warn(
+          s"Skipping the build: fork choice ${choice.block.messageHash.show -> "message"} is before the era start."
+        )
+        .as(none)
     else build.map(_.some)
 
   private def createLambdaResponse(
@@ -250,7 +255,7 @@ class EraRuntime[F[_]: Sync: Clock: Metrics: Log: EraStorage: FinalityStorageRea
                                      .ballot(
                                        keyBlockHash = era.keyBlockHash,
                                        roundId = Ticks(lambdaMessage.roundId),
-                                       target = choice.block.messageHash,
+                                       target = choice.block,
                                        justifications = choice.justificationsMap
                                      )
                                      .timerGauge("response_ballot")
@@ -285,7 +290,7 @@ class EraRuntime[F[_]: Sync: Clock: Metrics: Log: EraStorage: FinalityStorageRea
                         .block(
                           keyBlockHash = era.keyBlockHash,
                           roundId = roundId,
-                          mainParent = choice.block.messageHash,
+                          mainParent = choice.block,
                           justifications = choice.justificationsMap,
                           isBookingBlock = isBookingBoundary(
                             choice.block.roundInstant,
@@ -299,7 +304,7 @@ class EraRuntime[F[_]: Sync: Clock: Metrics: Log: EraStorage: FinalityStorageRea
                         .ballot(
                           keyBlockHash = era.keyBlockHash,
                           roundId = roundId,
-                          target = choice.block.messageHash,
+                          target = choice.block,
                           justifications = choice.justificationsMap
                         )
                         .timerGauge("lambda_ballot")
@@ -340,7 +345,7 @@ class EraRuntime[F[_]: Sync: Clock: Metrics: Log: EraStorage: FinalityStorageRea
                         .ballot(
                           keyBlockHash = era.keyBlockHash,
                           roundId = roundId,
-                          target = choice.block.messageHash,
+                          target = choice.block,
                           justifications = choice.justificationsMap
                         )
                         .timerGauge("omega_ballot")

@@ -12,7 +12,7 @@ import Accounts from './Accounts';
 import Faucet from './Faucet';
 import Explorer from './Explorer';
 import BlockList from './BlockList';
-import { PrivateRoute } from './Utils';
+import { PrivateRoute, Title } from './Utils';
 import AuthContainer from '../containers/AuthContainer';
 import FaucetContainer from '../containers/FaucetContainer';
 import ErrorContainer from '../containers/ErrorContainer';
@@ -31,6 +31,10 @@ import ConnectedPeersContainer from '../containers/ConnectedPeersContainer';
 import ConnectedPeers from './ConnectedPeers';
 import Vesting from '../contracts/Vesting/component/Vesting';
 import { VestingContainer } from '../contracts/Vesting/container/VestingContainer';
+import { DeployContractsForm } from './DeployContracts';
+import { DeployContractsContainer } from '../containers/DeployContractsContainer';
+import { useEffect } from 'react';
+import ReactGA from 'react-ga';
 
 // https://medium.com/@pshrmn/a-simple-react-router-v4-tutorial-7f23ff27adf
 
@@ -92,6 +96,8 @@ const SideMenuItems: (MenuItem | GroupedMenuItem)[] = [
   new MenuItem(Pages.Home, 'Home', 'home', true),
   new MenuItem(Pages.Accounts, 'Account Keys', 'address-book'),
   new MenuItem(Pages.Faucet, 'Faucet', 'coins'),
+  // TODO (ECO-313) Open it when we have implement the plugin()
+  // new MenuItem(Pages.DeployContracts, 'Deploy Contract', 'rocket'),
   new MenuItem(Pages.Explorer, 'Explorer', 'project-diagram'),
   new MenuItem(Pages.Blocks, 'Blocks', 'th-large'),
   new MenuItem(Pages.Deploys, 'Deploys', 'tasks'),
@@ -114,6 +120,7 @@ export interface AppProps {
   accountSelectorContainer: AccountSelectorContainer;
   connectedPeersContainer: ConnectedPeersContainer;
   search: SearchContainer;
+  deployContractsContainer: DeployContractsContainer;
 }
 
 // The entry point for rendering.
@@ -303,74 +310,91 @@ function useQuery() {
   return new URLSearchParams(useLocation().search);
 }
 
+
+ReactGA.initialize("UA-133833104-1");
+
+// the hook to send pageView to GA.
+function usePageViews() {
+  let location = useLocation();
+
+  useEffect(
+    () => {
+      ReactGA.pageview(location.pathname);
+    },
+    [location]
+  );
+}
+
 // Render the appropriate page.
 const Content = (props: AppProps) => {
   let query = useQuery();
+  usePageViews();
   return (
     <main>
       <div className="content-wrapper">
         <div className="container-fluid">
           <Alerts {...props} />
           <Switch>
-            <Route exact path={Pages.Home} render={_ => <Home {...props} />} />
-            <Route
-              path={Pages.DeploysOfAccount}
-              render={_ => (
-                <DeployInfoListDetails
-                  pageToken={query.get('pageToken')}
-                  {...props}
-                />
-              )}
-            ></Route>
-            <PrivateRoute
-              path={Pages.Accounts}
-              auth={props.auth}
-              render={_ => <Accounts {...props} />}
-            />
-            <PrivateRoute
-              path={Pages.Faucet}
-              auth={props.auth}
-              render={_ => <Faucet {...props} />}
-            />
-            <Route
-              path={Pages.Explorer}
-              render={_ => (
-                <Explorer
-                  maxRank={query.get('maxRank')}
-                  depth={query.get('depth')}
-                  {...props}
-                />
-              )}
-            />
-            <Route
-              path={Pages.Block}
-              render={_ => <BlockDetails {...props} />}
-            />
-            <Route
-              path={Pages.Blocks}
-              render={_ => (
-                <BlockList
-                  maxRank={query.get('maxRank')}
-                  depth={query.get('depth')}
-                  {...props}
-                />
-              )}
-            />
-            <Route
-              path={Pages.Deploy}
-              render={_ => <DeployDetails {...props} />}
-            />
-            <Route path={Pages.Vesting} render={_ => <Vesting {...props} />} />
-
-            <Route
-              path={Pages.Deploys}
-              render={_ => <AccountSelector {...props} />}
-            />
-            <Route path={Pages.Search} render={_ => <Search {...props} />} />
-            <Route
-              path={Pages.ConnectedPeers}
-              render={_ => <ConnectedPeers {...props} />}
-            />
+            <Route exact path={Pages.Home}>
+              <Title title="Home"/>
+              <Home {...props} />
+            </Route>
+            <Route path={Pages.DeploysOfAccount}>
+              <Title title="Deploys"/>
+              <DeployInfoListDetails
+                pageToken={query.get('pageToken')}
+                {...props}
+              />
+            </Route>
+            <PrivateRoute path={Pages.Accounts} auth={props.auth}>
+              <Title title="Account Keys"/>
+              <Accounts {...props}/>
+            </PrivateRoute>
+            <PrivateRoute path={Pages.Faucet} auth={props.auth}>
+               <Title title="Faucet"/>
+               <Faucet {...props} />
+            </PrivateRoute>
+            <Route path={Pages.Explorer}>
+              <Title title="Explorer"/>
+              <Explorer
+                maxRank={query.get('maxRank')}
+                depth={query.get('depth')}
+                {...props}
+              />
+            </Route>
+            <Route path={Pages.Block}>
+              <Title title="Block Detail"/>
+              <BlockDetails {...props}/>
+            </Route>
+            <Route path={Pages.Blocks}>
+              <Title title="Blocks"/>
+              <BlockList
+                maxRank={query.get('maxRank')}
+                depth={query.get('depth')}
+                {...props}
+              />
+            </Route>
+            <Route path={Pages.Deploy}>
+              <Title title="Deploy Detail"/>
+              <DeployDetails {...props}/>
+            </Route>
+            <Route path={Pages.Vesting}>
+              <Title title="Vesting Contract"/>
+              <Vesting {...props} />
+            </Route>
+            <Route path={Pages.DeployContracts} render={_ => <DeployContractsForm {...props}/>}/>
+            <Route path={Pages.Deploys}>
+              <Title title={"Deploys"}/>
+              <AccountSelector {...props}/>
+            </Route>
+            <Route path={Pages.Search}>
+              <Title title="Search"/>
+              <Search {...props} />
+            </Route>
+            <Route path={Pages.ConnectedPeers}>
+              <Title title="Connected Peers"/>
+              <ConnectedPeers {...props}/>
+            </Route>
           </Switch>
         </div>
       </div>

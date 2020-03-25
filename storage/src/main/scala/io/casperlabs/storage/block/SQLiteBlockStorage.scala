@@ -247,7 +247,8 @@ object SQLiteBlockStorage {
         "deploy_error_count",
         "deploy_cost_total",
         "deploy_gas_price_avg",
-        "is_finalized"
+        "is_finalized",
+        "is_orphaned"
       )
     Fragment.const(cols.map(col => if (alias.isEmpty) col else s"${alias}.${col}").mkString(", "))
   }

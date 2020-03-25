@@ -229,6 +229,12 @@ private[configuration] final case class Options private (
       )
 
     @scallop
+    val serverShutdownTimeout =
+      gen[FiniteDuration](
+        "Timeout for shutting down gRPC services."
+      )
+
+    @scallop
     val tlsCertificate =
       gen[Path](
         "Path to node's X.509 certificate file, that is being used for identification.",
@@ -298,10 +304,6 @@ private[configuration] final case class Options private (
     @scallop
     val casperAutoProposeAccCount =
       gen[Int]("Number of deploys to accumulate before proposing.")
-
-    @scallop
-    val casperMaxBlockSizeBytes =
-      gen[Int]("Maximum block size [in bytes].")
 
     @scallop
     val serverBootstrap =
