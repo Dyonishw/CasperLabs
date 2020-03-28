@@ -22,19 +22,29 @@ export class Contract {
   private sessionWasm: ByteArray;
   private paymentWasm: ByteArray;
 
-  constructor(sessionPath: string, paymentPath: string) {
+  constructor(sessionPath: string, paymentPath?: string) {
     this.sessionWasm = fs.readFileSync(sessionPath);
-    this.paymentWasm = fs.readFileSync(paymentPath);
+    if (!paymentPath) {
+      this.paymentWasm = Buffer.from('');
+    } else {
+      this.paymentWasm = fs.readFileSync(paymentPath);
+    }
   }
 
   public deploy(
     args: Deploy.Arg[],
     paymentAmount: bigint,
     accountPublicKey: ByteArray,
-    signingKeyPair: nacl.SignKeyPair,
-    gasPrice: number
+    signingKeyPair: nacl.SignKeyPair
   ): Deploy {
-    const deploy = makeDeploy(args, ContractType.WASM, this.sessionWasm, this.paymentWasm, paymentAmount, accountPublicKey, gasPrice);
+    const deploy = makeDeploy(
+      args,
+      ContractType.WASM,
+      this.sessionWasm,
+      this.paymentWasm,
+      paymentAmount,
+      accountPublicKey
+    );
     return signDeploy(deploy, signingKeyPair);
   }
 }
@@ -46,17 +56,12 @@ export class BoundContract {
     private contractKeyPair: nacl.SignKeyPair
   ) {}
 
-  public deploy(
-    args: Deploy.Arg[],
-    paymentAmount: bigint,
-    gasPrice: number
-  ): Deploy {
+  public deploy(args: Deploy.Arg[], paymentAmount: bigint): Deploy {
     return this.contract.deploy(
       args,
       paymentAmount,
       this.contractKeyPair.publicKey,
-      this.contractKeyPair,
-      gasPrice
+      this.contractKeyPair
     );
   }
 }

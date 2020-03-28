@@ -31,7 +31,7 @@ dynamic-host-address = false
 no-upnp = false
 
 # Default timeout for roundtrip connections.
-default-timeout = "5second"
+default-timeout = "15second"
 
 # Timeout for shutting down gRPC services.
 shutdown-timeout = "1minute"
@@ -144,6 +144,15 @@ block-upload-rate-period = "0s"
 # Maximum number of in-flight throttled block download requests per peer,
 # if 0 then unlimited, if reached max size then peer will receive RESOURCE_EXHAUSTED response.
 block-upload-rate-max-throttled = 0
+
+# Size of the main thread pool.
+main-threads = 64
+
+# Size of the thread pool used to handle incoming requests.
+ingress-threads = 32
+
+# Size of the thread pool for database connections.
+db-threads = 48
 
 # io.casperlabs.node.configuration.Configuration.BlockStorage
 [blockstorage]
