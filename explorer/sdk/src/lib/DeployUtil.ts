@@ -3,6 +3,7 @@ import {
   Deploy,
   Signature
 } from 'casperlabs-grpc/io/casperlabs/casper/consensus/consensus_pb';
+import JSBI from 'jsbi';
 import * as nacl from 'tweetnacl-ts';
 import { ByteArray } from '../index';
 import { Args, BigIntValue } from './Args';
@@ -20,7 +21,7 @@ export const makeDeploy = (
   type: ContractType,
   session: ByteArray,
   paymentWasm: ByteArray | null,
-  paymentAmount: bigint,
+  paymentAmount: bigint | JSBI,
   accountPublicKey: ByteArray
 ): Deploy => {
   const sessionCode = new Deploy.Code();

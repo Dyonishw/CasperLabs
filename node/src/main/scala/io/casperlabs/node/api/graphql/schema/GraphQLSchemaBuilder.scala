@@ -71,14 +71,12 @@ private[graphql] class GraphQLSchemaBuilder[F[_]: Fs2SubscriptionStream
       //
       // 3) Seq->List conversion: least critical, must be ignored until we solve the above 2 issues
       RunToFuture[F].unsafeToFuture(
-        hashes.toList
-          .traverse { hash =>
-            BlockAPI.getBlockInfoWithDeploys[F](
-              hash,
-              DeployInfo.View.BASIC.some,
-              BlockInfo.View.FULL
-            )
-          }
+        BlockAPI
+          .getMultipleBlockInfoWithDeploys[F](
+            hashes,
+            DeployInfo.View.BASIC.some,
+            BlockInfo.View.FULL
+          )
           .map(list => list: Seq[BlockAndMaybeDeploys])
       )
     }

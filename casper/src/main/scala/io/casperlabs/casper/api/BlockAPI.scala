@@ -195,6 +195,7 @@ object BlockAPI {
       withDeploys <- withViews[F](blockInfo, maybeDeployView, blockView)
     } yield withDeploys
 
+  //
   def getMultipleBlockInfoWithDeploys[F[_]: MonadThrowable: MultiParentCasperRef: BlockStorage: DeployStorage: DagStorage](
       blockHashList: Seq[BlockHash],
       maybeDeployView: Option[DeployInfo.View],
@@ -232,6 +233,8 @@ object BlockAPI {
         )
       )
 
+  // TODO: remove this: the dv comes from the projections and passed as an implicit to the DeployStorageReader class and then
+  // used for building the query
   private def withViews[F[_]: Monad: DeployStorage: DagStorage](
       blockInfo: BlockInfo,
       maybeDeployView: Option[DeployInfo.View],

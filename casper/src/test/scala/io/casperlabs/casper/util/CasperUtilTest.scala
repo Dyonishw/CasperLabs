@@ -36,75 +36,69 @@ class CasperUtilTest extends FlatSpec with Matchers with BlockGenerator with Sto
       (votedBranch(dag, a.blockHash, b.blockHash) shouldBeF result.map(_.blockHash))
   }
 
-  "isInMainChain and votedBranch" should "classify appropriately when using the same block" in withStorage {
-    implicit blockStorage => implicit dagStorage => _ => _ =>
+  "isInMainChain and votedBranch" should "classify appropriately when using the same block" in withCombinedStorage() {
+    implicit storage =>
       for {
         b      <- createAndStoreMessage[Task](Seq())
-        dag    <- dagStorage.getRepresentation
+        dag    <- storage.getRepresentation
         _      <- isInMainChain(dag, b.blockHash, b.blockHash) shouldBeF true
         result <- votedBranch(dag, b.blockHash, b.blockHash) shouldBeF None
       } yield result
   }
 
-  it should "classify appropriately" in withStorage {
-    implicit blockStorage => implicit dagStorage => _ =>
-      _ =>
-        /**
-          * The DAG looks like:
-          *
-          *     b3
-          *     |
-          *     b2
-          *     |
-          *     b1
-          *
-          */
-        for {
-          genesis <- createAndStoreMessage[Task](Seq())
-          b2      <- createAndStoreMessage[Task](Seq(genesis.blockHash))
-          b3      <- createAndStoreMessage[Task](Seq(b2.blockHash))
+  it should "classify appropriately" in withCombinedStorage() { implicit storage =>
+    /**
+      * The DAG looks like:
+      *
+      *     b3
+      *     |
+      *     b2
+      *     |
+      *     b1
+      *
+      */
+    for {
+      genesis <- createAndStoreMessage[Task](Seq())
+      b2      <- createAndStoreMessage[Task](Seq(genesis.blockHash))
+      b3      <- createAndStoreMessage[Task](Seq(b2.blockHash))
 
-          implicit0(dag: DagRepresentation[Task]) <- dagStorage.getRepresentation
-
-          _      <- testVoteBranchAndIsInMainChain(genesis, b2, Some(b2))
-          _      <- testVoteBranchAndIsInMainChain(b2, genesis, None)
-          _      <- testVoteBranchAndIsInMainChain(genesis, b3, Some(b2))
-          _      <- testVoteBranchAndIsInMainChain(b3, genesis, None)
-          _      <- testVoteBranchAndIsInMainChain(b2, b3, Some(b3))
-          result <- testVoteBranchAndIsInMainChain(b3, b2, None)
-        } yield result
+      _      <- testVoteBranchAndIsInMainChain(genesis, b2, Some(b2))
+      _      <- testVoteBranchAndIsInMainChain(b2, genesis, None)
+      _      <- testVoteBranchAndIsInMainChain(genesis, b3, Some(b2))
+      _      <- testVoteBranchAndIsInMainChain(b3, genesis, None)
+      _      <- testVoteBranchAndIsInMainChain(b2, b3, Some(b3))
+      result <- testVoteBranchAndIsInMainChain(b3, b2, None)
+    } yield result
   }
 
-  it should "classify diamond DAGs appropriately" in withStorage {
-    implicit blockStorage => implicit dagStorage => _ =>
-      _ =>
-        /**
-          * The dag looks like:
-          *
-          *            b4
-          *           // \
-          *          b2  b3
-          *           \  /
-          *          genesis
-          */
-        for {
-          genesis <- createAndStoreMessage[Task](Seq())
-          b2      <- createAndStoreMessage[Task](Seq(genesis.blockHash))
-          b3      <- createAndStoreMessage[Task](Seq(genesis.blockHash))
-          b4      <- createAndStoreMessage[Task](Seq(b2.blockHash, b3.blockHash))
+  it should "classify diamond DAGs appropriately" in withCombinedStorage() { implicit storage =>
+    /**
+      * The dag looks like:
+      *
+      *            b4
+      *           // \
+      *          b2  b3
+      *           \  /
+      *          genesis
+      */
+    for {
+      genesis <- createAndStoreMessage[Task](Seq())
+      b2      <- createAndStoreMessage[Task](Seq(genesis.blockHash))
+      b3      <- createAndStoreMessage[Task](Seq(genesis.blockHash))
+      b4      <- createAndStoreMessage[Task](Seq(b2.blockHash, b3.blockHash))
 
-          implicit0(dag: DagRepresentation[Task]) <- dagStorage.getRepresentation
+      implicit0(dag: DagRepresentation[Task]) <- storage.getRepresentation
 
-          _      <- testVoteBranchAndIsInMainChain(genesis, b2, Some(b2))
-          _      <- testVoteBranchAndIsInMainChain(genesis, b3, Some(b3))
-          _      <- testVoteBranchAndIsInMainChain(genesis, b4, Some(b2))
-          _      <- testVoteBranchAndIsInMainChain(b2, b4, Some(b4))
-          result <- testVoteBranchAndIsInMainChain(b3, b4, None)
-        } yield result
+      _      <- testVoteBranchAndIsInMainChain(genesis, b2, Some(b2))
+      _      <- testVoteBranchAndIsInMainChain(genesis, b3, Some(b3))
+      _      <- testVoteBranchAndIsInMainChain(genesis, b4, Some(b2))
+      _      <- testVoteBranchAndIsInMainChain(b2, b4, Some(b4))
+      result <- testVoteBranchAndIsInMainChain(b3, b4, None)
+    } yield result
   }
 
-  it should "classify complicated chains appropriately" in withStorage {
-    implicit blockStorage => implicit dagStorage => _ => _ =>
+  it should "classify complicated chains appropriately" in withCombinedStorage() {
+    implicit storage =>
       val v1 = generateValidator("V1")
       val v2 = generateValidator("V2")
 
@@ -135,7 +129,7 @@ class CasperUtilTest extends FlatSpec with Matchers with BlockGenerator with Sto
         b7      <- createAndStoreMessage[Task](Seq(b4.blockHash), v1)
         b8      <- createAndStoreMessage[Task](Seq(b7.blockHash), v1)
 
-        implicit0(dag: DagRepresentation[Task]) <- dagStorage.getRepresentation
+        implicit0(dag: DagRepresentation[Task]) <- storage.getRepresentation
 
         _      <- testVoteBranchAndIsInMainChain(genesis, b2, Some(b2))
         _      <- testVoteBranchAndIsInMainChain(genesis, b3, Some(b3))
@@ -157,8 +151,8 @@ class CasperUtilTest extends FlatSpec with Matchers with BlockGenerator with Sto
   }
 
   // See [[casper/src/test/resources/casper/panoramaForEquivocatorSwimlaneIsEmpty.png]]
-  "panoramaDagLevelsOfBlock" should "properly return the panorama of message B" in withStorage {
-    implicit blockStorage => implicit dagStorage => _ => _ =>
+  "panoramaDagLevelsOfBlock" should "properly return the panorama of message B" in withCombinedStorage() {
+    implicit storage =>
       val v0         = generateValidator("V0")
       val v1         = generateValidator("V1")
       val v2         = generateValidator("V2")
@@ -213,7 +207,7 @@ class CasperUtilTest extends FlatSpec with Matchers with BlockGenerator with Sto
                bonds,
                Map(v2 -> b6.blockHash)
              )
-        dag <- dagStorage.getRepresentation
+        dag <- storage.getRepresentation
 
         panoramaDagLevel <- FinalityDetectorUtil.panoramaDagLevelsOfBlock(
                              dag,
@@ -279,8 +273,8 @@ class CasperUtilTest extends FlatSpec with Matchers with BlockGenerator with Sto
   }
 
   // See [[casper/src/test/resources/casper/panoramaForEquivocatorSwimlaneIsEmpty.png]]
-  "panoramaM" should "properly return the panorama of message B, and when V(j)-swimlane is empty or V(j) happens to be an equivocator, puts 0 in the corresponding cell." in withStorage {
-    implicit blockStorage => implicit blockDagStorage => _ => _ =>
+  "panoramaM" should "properly return the panorama of message B, and when V(j)-swimlane is empty or V(j) happens to be an equivocator, puts 0 in the corresponding cell." in withCombinedStorage() {
+    implicit storage =>
       val v0                = generateValidator("V0")
       val v1                = generateValidator("V1")
       val v2                = generateValidator("V2")
@@ -340,7 +334,7 @@ class CasperUtilTest extends FlatSpec with Matchers with BlockGenerator with Sto
               bonds,
               Map(v2 -> b4.blockHash) // skip v1 last message in justifications
             )
-        dag <- blockDagStorage.getRepresentation
+        dag <- storage.getRepresentation
         panoramaM <- FinalityDetectorUtil.panoramaM(
                       dag,
                       validatorsToIndex,
